@@ -79,3 +79,7 @@ print(result)
 | `MODEL_ID` | `Qwen/Qwen2.5-VL-3B-Instruct` | 다른 Qwen2.5-VL 체크포인트로 교체 |
 
 하드웨어는 ZeroGPU 또는 GPU를 권장한다. ZeroGPU에서는 GPU 점유 시간이 함수당 180초로 잡혀 있으며([vlm/model.py](vlm/model.py)의 `GPU_DURATION_SEC`), 긴 문서에서 잘리면 이 값을 늘린다.
+
+## 빌드 메모
+
+`transformers` 5.x에서 `AutoProcessor`는 이미지만 쓰는 경우에도 비디오 서브프로세서를 함께 로드하고, 그 클래스가 **torchvision을 요구한다.** torchvision이 빠지면 기동 시 `Qwen2VLVideoProcessor requires the Torchvision library` ImportError로 Space가 죽는다. [requirements.txt](requirements.txt)에 torch와 torchvision을 함께(버전 고정 없이) 두는 이유다.
