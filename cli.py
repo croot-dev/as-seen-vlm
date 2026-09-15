@@ -25,6 +25,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--mode", choices=MODES, default="auto", help="기본값은 자동 판별")
     parser.add_argument("--max-new-tokens", type=int, default=DEFAULT_MAX_NEW_TOKENS)
     parser.add_argument("--max-pixels", type=int, default=DEFAULT_MAX_PIXELS)
+    parser.add_argument(
+        "--split",
+        choices=("auto", "columns", "none"),
+        default="auto",
+        help="문서 열 분할 방식 (기본값: 넓은 문서만 자동 분할)",
+    )
     parser.add_argument("--prompt-file", type=Path, default=None, help="프롬프트를 담은 텍스트 파일")
     parser.add_argument("--out", type=Path, default=None, help="결과를 저장할 파일 경로")
     return parser.parse_args(argv)
@@ -55,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
         prompt,
         args.max_new_tokens,
         args.max_pixels,
+        args.split,
     ):
         if not announced:
             print(f"[모드: {mode}]", file=sys.stderr, flush=True)

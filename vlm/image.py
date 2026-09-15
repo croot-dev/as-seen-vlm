@@ -21,6 +21,13 @@ MAX_MAX_PIXELS = 4_000_000
 DOCUMENT_MIN_PIXELS = 1_200_000
 MAX_UPSCALE = 2.0
 
+# 넓은 문서/UI는 한 번에 넣으면 3B 모델이 한 열만 읽고 종료하는 경우가 있다.
+# 실험한 대시보드의 실제 열 경계(사이드바 13%, 우측 패널 시작 72%)를 기본값으로
+# 삼되, 겹침을 둬 경계에 걸친 제목이나 값을 두 조각 중 하나가 온전히 보게 한다.
+WIDE_DOCUMENT_RATIO = 1.25
+DOCUMENT_COLUMN_CUTS = (0.13, 0.72)
+DOCUMENT_COLUMN_OVERLAP = 0.06
+
 _ALLOWED_SCHEMES = ("http", "https")
 _DOWNLOAD_TIMEOUT_SEC = 20
 
@@ -68,6 +75,29 @@ def fit_pixels(
         return image.resize(target, Image.LANCZOS)
 
     return image
+
+
+def split_document_columns(image: Image.Image, strategy: str = "auto") -> list[Image.Image]:
+    """넓은 문서를 겹치는 세로 열로 나눈다.
+
+    ``auto``는 가로로 넓은 입력만 분할하고, ``columns``는 비율과 관계없이
+    분할한다. ``none``은 원본 한 장만 반환한다. 반환 이미지는 모두 복사본이다.
+    """
+    if strategy not in {"auto", "columns", "none"}:
+        raise ValueError(f"지원하지 않는 분할 방식입니다: {strategy}")
+
+    width, height = image.size
+    if strategy == "none" or (strategy == "auto" and width / max(height, 1) < WIDE_DOCUMENT_RATIO):
+        return [image.copy()]
+
+    edges = (0, *(round(width * cut) for cut in DOCUMENT_COLUMN_CUTS), width)
+    overlap = round(width * DOCUMENT_COLUMN_OVERLAP)
+    columns: list[Image.Image] = []
+    for index, (start, end) in enumerate(zip(edges, edges[1:])):
+        left = max(0, start - (overlap if index else 0))
+        right = min(width, end + (overlap if index < len(edges) - 2 else 0))
+        columns.append(image.crop((left, 0, right, height)))
+    return columns
 
 
 def _normalize(image: Image.Image) -> Image.Image:

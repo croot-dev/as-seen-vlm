@@ -17,6 +17,7 @@ short_description: 이미지 속 텍스트 전사 + 시각 요소 상세 서술
 
 - **문서**: 제목·본문·글머리 기호·표·상자 안 글자까지 요약 없이 원문 그대로 옮겨 적는다. 표는 `|` 로 칸을 구분한다.
 - **사진**: 색·형태·개수·배치·배경까지 보이는 것을 상세히 서술한다.
+- **넓은 문서·대시보드**: 사이드바/본문/우측 패널을 겹쳐 세로 3분할해 각각 전사하고, 경계의 중복 줄을 제거해 하나로 합친다.
 - 어느 쪽이든 **원문 언어를 유지하고 번역하지 않으며**, 추측·해석·감정 묘사를 넣지 않는다.
 
 처리 방식은 UI에서 자동 판별 / 문서 / 사진 중에 고를 수 있고, 문서나 사진을 고르면 해당 프롬프트가 입력창에 채워져 그대로 고쳐 쓸 수 있다. 프롬프트 전문은 [vlm/prompts.py](vlm/prompts.py)에 있다.
@@ -64,6 +65,8 @@ python app.py                      # Gradio UI (http://127.0.0.1:7860)
 python cli.py ./sample.png         # CLI 한 장 (자동 판별)
 python cli.py ./scan.jpg --mode document
 python cli.py ./sample.png --out result.txt
+python cli.py ./dashboard.png --split columns  # 세로 3분할 강제
+python cli.py ./scan.jpg --split none          # 분할하지 않음
 python cli.py https://example.com/page.jpg --max-new-tokens 3072
 ```
 
@@ -83,6 +86,7 @@ result = client.predict(
     prompt="",          # 비워두면 모드에 맞는 기본 프롬프트
     max_new_tokens=2048,
     max_pixels=1600000,
+    split="auto",        # "auto" / "columns" / "none"
     api_name="/describe",
 )
 print(result)  # (판별된 모드, 결과 텍스트)
@@ -95,6 +99,8 @@ print(result)  # (판별된 모드, 결과 텍스트)
 | `MODEL_ID` | `Qwen/Qwen2.5-VL-3B-Instruct` | 다른 Qwen2.5-VL 체크포인트로 교체 |
 
 하드웨어는 ZeroGPU 또는 GPU를 권장한다. ZeroGPU에서는 GPU 점유 시간이 함수당 180초로 잡혀 있으며([vlm/model.py](vlm/model.py)의 `GPU_DURATION_SEC`), 긴 문서에서 잘리면 이 값을 늘린다.
+
+`split="auto"`는 가로/세로 비율이 1.25 이상인 문서만 세로 3분할한다. 세로로 긴 일반 스캔, 사진, 사용자 지정 프롬프트는 기존 단일 패스를 유지한다. 분할할 때 각 경계를 이미지 너비의 6%만큼 겹치고, 조각 결과에서 정확히 반복된 경계 줄을 제거한 뒤 왼쪽부터 합친다. 조각용 프롬프트는 대시보드에 한정하지 않고 문서·표·웹 UI·슬라이드 등에서 보이는 텍스트만 전사하며, 경계에서 잘린 글자와 보이지 않는 구조는 추측하지 않도록 구성했다. `max_new_tokens`는 조각 하나당 상한이므로 강제 분할 시 전체 출력은 그보다 길어질 수 있다.
 
 ## 빌드 메모
 

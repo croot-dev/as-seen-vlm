@@ -21,6 +21,11 @@ MODE_LABELS = {
     "photo": "사진 — 보이는 것을 서술",
     "custom": "직접 입력한 프롬프트",
 }
+SPLIT_CHOICES = [
+    ("자동 — 넓은 문서만 세로 3분할", "auto"),
+    ("항상 세로 3분할", "columns"),
+    ("분할 안 함", "none"),
+]
 
 CSS = """
 .wrap-narrow { max-width: 1180px; margin: 0 auto; }
@@ -39,6 +44,7 @@ def describe(
     prompt: str,
     max_new_tokens: float,
     max_pixels: float,
+    split: str,
 ) -> Iterator[tuple[str, str]]:
     if image is None:
         raise gr.Error("이미지를 먼저 올려 주세요.")
@@ -50,6 +56,7 @@ def describe(
         prompt or "",
         int(max_new_tokens),
         int(max_pixels),
+        split,
     ):
         chunks.append(delta)
         yield MODE_LABELS.get(resolved, resolved), "".join(chunks)
@@ -87,6 +94,12 @@ with gr.Blocks(title="이미지 전사 · Qwen2.5-VL") as demo:
                     stop_button = gr.Button("중지", variant="stop", scale=1)
 
                 with gr.Accordion("고급 설정", open=False):
+                    split_input = gr.Radio(
+                        choices=SPLIT_CHOICES,
+                        value="auto",
+                        label="문서 분할",
+                        info="넓은 대시보드·다열 UI는 영역별로 전사한 뒤 중복 줄을 제거해 합칩니다.",
+                    )
                     prompt_input = gr.Textbox(
                         label="프롬프트",
                         value="",
@@ -129,7 +142,14 @@ with gr.Blocks(title="이미지 전사 · Qwen2.5-VL") as demo:
     mode_input.change(fn=fill_prompt, inputs=mode_input, outputs=prompt_input)
     run_event = run_button.click(
         fn=describe,
-        inputs=[image_input, mode_input, prompt_input, max_tokens_input, max_pixels_input],
+        inputs=[
+            image_input,
+            mode_input,
+            prompt_input,
+            max_tokens_input,
+            max_pixels_input,
+            split_input,
+        ],
         outputs=[mode_output, output],
         api_name="describe",
     )
