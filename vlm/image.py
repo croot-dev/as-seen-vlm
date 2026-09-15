@@ -15,6 +15,12 @@ DEFAULT_MAX_PIXELS = 1_600_000
 MIN_MAX_PIXELS = 200_000
 MAX_MAX_PIXELS = 4_000_000
 
+# ViT 패치 크기는 고정이라, 작은 스캔본을 그대로 넣으면 본문 글자가 패치 몇 개에
+# 걸쳐 뭉개진다. 정보가 늘지는 않지만 글자당 패치 수가 늘어 잔글씨 인식이 나아지므로
+# 작은 문서는 이 하한까지 확대한다. 원본이 지나치게 작으면 확대해도 소용없으니 배율을 제한한다.
+DOCUMENT_MIN_PIXELS = 1_200_000
+MAX_UPSCALE = 2.0
+
 _ALLOWED_SCHEMES = ("http", "https")
 _DOWNLOAD_TIMEOUT_SEC = 20
 
@@ -36,18 +42,32 @@ def load_image(source: str) -> Image.Image:
     return _normalize(Image.open(path))
 
 
-def cap_pixels(image: Image.Image, max_pixels: int = DEFAULT_MAX_PIXELS) -> Image.Image:
-    """총 픽셀 수가 상한을 넘으면 비율을 유지한 채 축소한 새 이미지를 반환한다."""
+def fit_pixels(
+    image: Image.Image,
+    max_pixels: int = DEFAULT_MAX_PIXELS,
+    min_pixels: int = 0,
+) -> Image.Image:
+    """총 픽셀 수를 [min_pixels, max_pixels] 안으로 맞춘 새 이미지를 반환한다.
+
+    상한을 넘으면 줄이고, 하한에 못 미치면 MAX_UPSCALE 배까지 키운다.
+    """
     max_pixels = max(MIN_MAX_PIXELS, min(int(max_pixels), MAX_MAX_PIXELS))
+    min_pixels = min(int(min_pixels), max_pixels)
     width, height = image.size
     pixels = width * height
-    if pixels <= max_pixels:
-        return image
 
-    # 반올림하면 상한을 근소하게 넘길 수 있어 양쪽 다 내림한다.
-    scale = (max_pixels / pixels) ** 0.5
-    target = (max(1, int(width * scale)), max(1, int(height * scale)))
-    return image.resize(target, Image.LANCZOS)
+    if pixels > max_pixels:
+        # 반올림하면 상한을 근소하게 넘길 수 있어 양쪽 다 내림한다.
+        scale = (max_pixels / pixels) ** 0.5
+        target = (max(1, int(width * scale)), max(1, int(height * scale)))
+        return image.resize(target, Image.LANCZOS)
+
+    if pixels < min_pixels:
+        scale = min(MAX_UPSCALE, (min_pixels / pixels) ** 0.5)
+        target = (max(1, int(width * scale)), max(1, int(height * scale)))
+        return image.resize(target, Image.LANCZOS)
+
+    return image
 
 
 def _normalize(image: Image.Image) -> Image.Image:

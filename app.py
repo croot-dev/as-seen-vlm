@@ -1,4 +1,4 @@
-"""Hugging Face Space 엔트리포인트: 이미지 → 텍스트 전사 + 시각 요소 서술."""
+"""Hugging Face Space 엔트리포인트: 문서는 전사하고, 사진은 서술한다."""
 
 from __future__ import annotations
 
@@ -7,13 +7,20 @@ from collections.abc import Iterator
 import gradio as gr
 from PIL import Image
 
-from vlm.image import DEFAULT_MAX_PIXELS, MAX_MAX_PIXELS, MIN_MAX_PIXELS, cap_pixels
-from vlm.model import DEFAULT_MAX_NEW_TOKENS, MAX_NEW_TOKENS_LIMIT, MODEL_ID, stream_transcribe
-from vlm.prompts import TRANSCRIBE_PROMPT
+from vlm.image import DEFAULT_MAX_PIXELS, MAX_MAX_PIXELS, MIN_MAX_PIXELS
+from vlm.model import DEFAULT_MAX_NEW_TOKENS, MAX_NEW_TOKENS_LIMIT, MODEL_ID, stream_describe
+from vlm.prompts import PROMPTS
 from vlm.runtime import DEVICE
 
 PIXELS_STEP = 100_000
 TOKENS_STEP = 128
+
+MODE_CHOICES = [("자동 판별", "auto"), ("문서 (전사)", "document"), ("사진 (서술)", "photo")]
+MODE_LABELS = {
+    "document": "문서 — 글자를 그대로 전사",
+    "photo": "사진 — 보이는 것을 서술",
+    "custom": "직접 입력한 프롬프트",
+}
 
 CSS = """
 .wrap-narrow { max-width: 1180px; margin: 0 auto; }
@@ -28,29 +35,37 @@ CSS = """
 
 def describe(
     image: Image.Image | None,
+    mode: str,
     prompt: str,
     max_new_tokens: float,
     max_pixels: float,
-) -> Iterator[str]:
+) -> Iterator[tuple[str, str]]:
     if image is None:
         raise gr.Error("이미지를 먼저 올려 주세요.")
 
-    prompt = (prompt or "").strip() or TRANSCRIBE_PROMPT
-    prepared = cap_pixels(image, int(max_pixels))
-
     chunks: list[str] = []
-    for delta in stream_transcribe(prepared, prompt, int(max_new_tokens)):
+    for resolved, delta in stream_describe(
+        image,
+        None if mode == "auto" else mode,
+        prompt or "",
+        int(max_new_tokens),
+        int(max_pixels),
+    ):
         chunks.append(delta)
-        yield "".join(chunks)
+        yield MODE_LABELS.get(resolved, resolved), "".join(chunks)
 
 
-# Gradio 6부터 theme/css는 Blocks가 아니라 launch()에서 받는다.
+def fill_prompt(mode: str) -> str:
+    """모드를 고르면 그 모드의 기본 프롬프트를 채워 보여준다. 자동이면 비운다."""
+    return PROMPTS.get(mode, "")
+
+
 with gr.Blocks(title="이미지 전사 · Qwen2.5-VL") as demo:
     with gr.Column(elem_classes="wrap-narrow"):
         gr.Markdown(
             "# 이미지 전사 (Qwen2.5-VL 3B)\n"
-            "이미지 속 텍스트는 원문 그대로 옮기고, 텍스트가 아닌 시각 요소는 "
-            "`[이미지: 상세 설명]`으로 대체합니다. 사진 한 장뿐이면 보이는 그대로 상세히 서술합니다."
+            "문서는 글자를 요약 없이 원문 그대로 옮겨 적고, 사진은 보이는 것을 상세히 서술합니다. "
+            "어떤 언어로 쓰여 있든 번역하지 않습니다."
         )
 
         with gr.Row():
@@ -59,16 +74,26 @@ with gr.Blocks(title="이미지 전사 · Qwen2.5-VL") as demo:
                     label="이미지",
                     type="pil",
                     sources=["upload", "clipboard"],
-                    height=420,
+                    height=400,
+                )
+                mode_input = gr.Radio(
+                    choices=MODE_CHOICES,
+                    value="auto",
+                    label="처리 방식",
+                    info="자동 판별은 모델에게 문서인지 사진인지 먼저 물어봅니다.",
                 )
                 with gr.Row():
-                    run_button = gr.Button("전사하기", variant="primary", scale=3)
+                    run_button = gr.Button("실행", variant="primary", scale=3)
                     stop_button = gr.Button("중지", variant="stop", scale=1)
 
                 with gr.Accordion("고급 설정", open=False):
                     prompt_input = gr.Textbox(
                         label="프롬프트",
-                        value=TRANSCRIBE_PROMPT,
+                        value="",
+                        placeholder=(
+                            "비워두면 처리 방식에 맞는 기본 프롬프트를 씁니다. "
+                            "위에서 문서나 사진을 고르면 그 프롬프트가 여기 채워집니다."
+                        ),
                         lines=10,
                         elem_id="prompt",
                     )
@@ -81,7 +106,7 @@ with gr.Blocks(title="이미지 전사 · Qwen2.5-VL") as demo:
                     )
                     max_pixels_input = gr.Slider(
                         label="입력 해상도 상한 (픽셀)",
-                        info="높일수록 잔글씨 인식에 유리하지만 느려집니다.",
+                        info="작은 문서는 잔글씨를 살리려고 자동으로 확대합니다. 이 값은 상한입니다.",
                         minimum=MIN_MAX_PIXELS,
                         maximum=MAX_MAX_PIXELS,
                         step=PIXELS_STEP,
@@ -89,10 +114,11 @@ with gr.Blocks(title="이미지 전사 · Qwen2.5-VL") as demo:
                     )
 
             with gr.Column(scale=5):
+                mode_output = gr.Textbox(label="처리 방식 판별 결과", interactive=False)
                 output = gr.Textbox(
                     label="결과",
-                    lines=26,
-                    max_lines=26,
+                    lines=23,
+                    max_lines=23,
                     buttons=["copy"],
                     interactive=False,
                     elem_id="result",
@@ -100,10 +126,11 @@ with gr.Blocks(title="이미지 전사 · Qwen2.5-VL") as demo:
 
         gr.Markdown(f"모델: `{MODEL_ID}` · 디바이스: `{DEVICE}`")
 
+    mode_input.change(fn=fill_prompt, inputs=mode_input, outputs=prompt_input)
     run_event = run_button.click(
         fn=describe,
-        inputs=[image_input, prompt_input, max_tokens_input, max_pixels_input],
-        outputs=output,
+        inputs=[image_input, mode_input, prompt_input, max_tokens_input, max_pixels_input],
+        outputs=[mode_output, output],
         api_name="describe",
     )
     stop_button.click(fn=None, inputs=None, outputs=None, cancels=[run_event])
