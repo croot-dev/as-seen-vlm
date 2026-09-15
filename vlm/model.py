@@ -11,7 +11,7 @@ from packaging.version import Version
 from PIL import Image
 from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration, TextIteratorStreamer
 
-from .prompts import SYSTEM_PROMPT, TRANSCRIBE_PROMPT
+from .prompts import TRANSCRIBE_PROMPT
 from .runtime import DEVICE, DTYPE, GPU
 
 MODEL_ID = os.environ.get("MODEL_ID", "Qwen/Qwen2.5-VL-3B-Instruct")
@@ -47,7 +47,6 @@ model, processor = _load()
 
 def _build_inputs(image: Image.Image, prompt: str):
     messages = [
-        {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]},
         {
             "role": "user",
             "content": [{"type": "image"}, {"type": "text", "text": prompt}],
