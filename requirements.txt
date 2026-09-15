@@ -1,0 +1,8 @@
+# ZeroGPU는 지원하는 torch 버전 목록이 정해져 있다. 빌드가 버전 문제로 실패하면
+# 로그가 알려주는 버전으로 아래 torch를 고정할 것.
+torch
+transformers>=4.51.0
+accelerate>=0.30.0
+Pillow>=10.0.0
+packaging
+spaces
